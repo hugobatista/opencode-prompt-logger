@@ -1,14 +1,17 @@
 import { afterAll, describe, expect, spyOn, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   CONTEXT_KINDS,
   DEFAULT_FILE,
+  DEFAULT_MAX_BYTES,
   assembledRecord,
   createWriter,
   httpRecord,
+  isEnabled,
   resolveFile,
+  resolveMaxBytes,
   shouldLogHttp,
 } from "../src/core"
 
@@ -40,6 +43,22 @@ describe("options", () => {
     expect(shouldLogHttp({})).toBe(true)
     expect(shouldLogHttp({ http: true })).toBe(true)
     expect(shouldLogHttp({ http: false })).toBe(false)
+  })
+
+  test("is enabled unless explicitly disabled", () => {
+    expect(isEnabled({})).toBe(true)
+    expect(isEnabled({ file: "/tmp/x.ndjson" })).toBe(true)
+    expect(isEnabled({ enabled: true })).toBe(true)
+    expect(isEnabled({ enabled: false })).toBe(false)
+  })
+
+  test("rotates at 256 MiB unless configured otherwise", () => {
+    expect(DEFAULT_MAX_BYTES).toBe(256 * 1024 * 1024)
+    expect(resolveMaxBytes({})).toBe(DEFAULT_MAX_BYTES)
+    expect(resolveMaxBytes({ maxBytes: 1024 })).toBe(1024)
+    expect(resolveMaxBytes({ maxBytes: 1024.9 })).toBe(1024)
+    expect(resolveMaxBytes({ maxBytes: false })).toBe(0)
+    expect(resolveMaxBytes({ maxBytes: 0 })).toBe(0)
   })
 
   test("captures every model request kind", () => {
@@ -156,6 +175,46 @@ describe("createWriter", () => {
       expect(() => write({ type: "assembled" })).not.toThrow()
       expect(spy).toHaveBeenCalledTimes(1)
       expect(String(spy.mock.calls[0]?.[0])).toContain("prompt-logger:")
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test("rotates to a single backup once maxBytes is passed", () => {
+    const file = join(ROOT, "rotate.ndjson")
+    const write = createWriter(file, 1) // every record passes the limit
+
+    write({ type: "assembled", n: 1 })
+    write({ type: "assembled", n: 2 })
+    write({ type: "assembled", n: 3 })
+
+    expect(readRecords(file).map((record) => record.n)).toEqual([3])
+    expect(readRecords(`${file}.1`).map((record) => record.n)).toEqual([2])
+  })
+
+  test("keeps one growing file when rotation is off", () => {
+    const file = join(ROOT, "no-rotate.ndjson")
+    const write = createWriter(file, 0)
+
+    for (let n = 0; n < 5; n++) write({ type: "assembled", n })
+
+    expect(readRecords(file)).toHaveLength(5)
+    expect(existsSync(`${file}.1`)).toBe(false)
+  })
+
+  test("still writes the record when rotation fails", () => {
+    const file = join(ROOT, "blocked.ndjson")
+    mkdirSync(`${file}.1`, { recursive: true }) // the backup path is a directory
+    const write = createWriter(file, 1)
+    const spy = spyOn(console, "error").mockImplementation(() => {})
+
+    try {
+      write({ type: "assembled", n: 1 })
+      write({ type: "assembled", n: 2 })
+
+      expect(readRecords(file).map((record) => record.n)).toEqual([1, 2])
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(String(spy.mock.calls[0]?.[0])).toContain("rotation failed")
     } finally {
       spy.mockRestore()
     }

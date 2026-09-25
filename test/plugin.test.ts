@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import plugin from "../src/index"
@@ -54,6 +54,39 @@ describe("prompt-logger plugin", () => {
     const harness = await createHarness({ file: join(ROOT, "no-http.ndjson"), http: false })
     expect(harness.names).toEqual(["context", "compaction", "generate", "title"])
     expect(harness.names).not.toContain("http.request")
+  })
+
+  test("registers nothing and creates no file when disabled", async () => {
+    const file = join(ROOT, "disabled-dir", "prompts.ndjson")
+    const harness = await createHarness({ file, enabled: false })
+
+    expect(harness.names).toEqual([])
+    expect(existsSync(file)).toBe(false)
+    expect(existsSync(join(ROOT, "disabled-dir"))).toBe(false)
+  })
+
+  test("registers every hook when explicitly enabled", async () => {
+    const harness = await createHarness({ file: join(ROOT, "enabled.ndjson"), enabled: true })
+    expect(harness.names).toEqual(["context", "compaction", "generate", "title", "http.request"])
+  })
+
+  test("rotates the log through the configured maxBytes", async () => {
+    const file = join(ROOT, "rotate.ndjson")
+    const harness = await createHarness({ file, maxBytes: 1 })
+
+    for (const sessionID of ["ses_1", "ses_2", "ses_3"]) {
+      await harness.run("context", {
+        sessionID,
+        agent: "plan",
+        model: { providerID: "anthropic", id: "claude-sonnet-4-6" },
+        system: [],
+        messages: [],
+        tools: {},
+      })
+    }
+
+    expect(readRecords(file).map((record) => record.sessionID)).toEqual(["ses_3"])
+    expect(readRecords(`${file}.1`).map((record) => record.sessionID)).toEqual(["ses_2"])
   })
 
   test("writes the assembled prompt of the agent loop", async () => {

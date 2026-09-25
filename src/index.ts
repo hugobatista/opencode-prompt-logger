@@ -4,7 +4,9 @@ import {
   assembledRecord,
   createWriter,
   httpRecord,
+  isEnabled,
   resolveFile,
+  resolveMaxBytes,
   shouldLogHttp,
   type Options,
 } from "./core"
@@ -19,7 +21,11 @@ export default Plugin.define({
   id: "prompt-logger",
   async setup(ctx) {
     const options = (ctx.options ?? {}) as Options
-    const write = createWriter(resolveFile(options))
+
+    // Disabled means idle: no hooks and no output file.
+    if (!isEnabled(options)) return
+
+    const write = createWriter(resolveFile(options), resolveMaxBytes(options))
 
     for (const kind of CONTEXT_KINDS) {
       await ctx.session.hook(kind, (event) => {
