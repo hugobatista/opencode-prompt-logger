@@ -1,0 +1,60 @@
+{
+  "name": "opencode-prompt-logger",
+  "version": "0.1.0",
+  "description": "OpenCode plugin: logs the assembled system prompt and the raw model request body of every model request to an NDJSON file.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Hugo Batista",
+    "url": "https://github.com/hugobatista"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hugobatista/opencode-prompt-logger.git"
+  },
+  "homepage": "https://github.com/hugobatista/opencode-prompt-logger#readme",
+  "bugs": {
+    "url": "https://github.com/hugobatista/opencode-prompt-logger/issues"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "prompt",
+    "logging",
+    "ndjson",
+    "debugging"
+  ],
+  "engines": {
+    "opencode": ">=2.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run scripts/build.ts",
+    "prepublishOnly": "bun run typecheck && bun test && bun run build"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.0.16"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.0.16",
+    "@types/bun": "^1.4.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}
