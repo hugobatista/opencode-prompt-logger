@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs"
-import { dirname } from "node:path"
+import { homedir } from "node:os"
+import { dirname, join } from "node:path"
 
 export type Options = {
   /** NDJSON destination for captured prompts. */
@@ -12,8 +13,30 @@ export type Options = {
   maxBytes?: number | false
 }
 
-/** NDJSON destination used when no `file` option is configured. */
-export const DEFAULT_FILE = "/tmp/opencode/prompts.ndjson"
+/**
+ * NDJSON destination used when no `file` option is configured: the per-user
+ * state directory of the current OS, never a shared temp directory.
+ *
+ * - Windows: `%LOCALAPPDATA%\opencode\prompts.ndjson`
+ * - macOS: `~/Library/Application Support/opencode/prompts.ndjson`
+ * - Linux/other: `$XDG_STATE_HOME/opencode/prompts.ndjson`, falling back to
+ *   `~/.local/state/opencode/prompts.ndjson`
+ *
+ * Pure by design so every OS can be asserted from any machine.
+ */
+export function defaultFile(
+  env: Record<string, string | undefined> = process.env,
+  platform: string = process.platform,
+): string {
+  const name = join("opencode", "prompts.ndjson")
+  if (platform === "win32") {
+    return join(env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), name)
+  }
+  if (platform === "darwin") {
+    return join(homedir(), "Library", "Application Support", name)
+  }
+  return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), name)
+}
 
 /** Rotation threshold used when no `maxBytes` option is configured: 256 MiB. */
 export const DEFAULT_MAX_BYTES = 256 * 1024 * 1024
@@ -50,7 +73,7 @@ export type HttpEvent = {
 }
 
 export function resolveFile(options: Options): string {
-  return options.file ?? DEFAULT_FILE
+  return options.file ?? defaultFile()
 }
 
 export function isEnabled(options: Options): boolean {
@@ -85,7 +108,8 @@ export type Write = (record: LogRecord) => void
  * swallowed: a logger must never break a model request.
  */
 export function createWriter(file: string, maxBytes: number = DEFAULT_MAX_BYTES): Write {
-  mkdirSync(dirname(file), { recursive: true })
+  // The log holds unredacted prompts: private to the user where POSIX allows.
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   const backup = `${file}.1`
   let bytes = existingSize(file)
 

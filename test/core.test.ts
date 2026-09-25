@@ -1,13 +1,13 @@
 import { afterAll, describe, expect, spyOn, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   CONTEXT_KINDS,
-  DEFAULT_FILE,
   DEFAULT_MAX_BYTES,
   assembledRecord,
   createWriter,
+  defaultFile,
   httpRecord,
   isEnabled,
   resolveFile,
@@ -29,10 +29,39 @@ function readRecords(file: string): Array<Record<string, unknown>> {
 }
 
 describe("options", () => {
-  test("defaults to the documented destination", () => {
-    expect(DEFAULT_FILE).toBe("/tmp/opencode/prompts.ndjson")
-    expect(resolveFile({})).toBe(DEFAULT_FILE)
-    expect(resolveFile({ http: false })).toBe(DEFAULT_FILE)
+  test("defaults to the per-user state directory of the OS", () => {
+    expect(resolveFile({})).toBe(defaultFile())
+    expect(resolveFile({ http: false })).toBe(defaultFile())
+    expect(resolveFile({}).endsWith(join("opencode", "prompts.ndjson"))).toBe(true)
+    // The log never lands in a shared temp directory, on any OS.
+    for (const platform of ["win32", "darwin", "linux"]) {
+      expect(defaultFile({}, platform).startsWith(tmpdir())).toBe(false)
+    }
+  })
+
+  test("resolves the state directory for Windows", () => {
+    expect(defaultFile({ LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local" }, "win32")).toBe(
+      join("C:\\Users\\me\\AppData\\Local", "opencode", "prompts.ndjson"),
+    )
+    // Without LOCALAPPDATA the home fallback still points at AppData\Local.
+    expect(defaultFile({}, "win32")).toBe(
+      join(homedir(), "AppData", "Local", "opencode", "prompts.ndjson"),
+    )
+  })
+
+  test("resolves the state directory for macOS", () => {
+    expect(defaultFile({}, "darwin")).toBe(
+      join(homedir(), "Library", "Application Support", "opencode", "prompts.ndjson"),
+    )
+  })
+
+  test("resolves the state directory for Linux, honouring XDG_STATE_HOME", () => {
+    expect(defaultFile({ XDG_STATE_HOME: "/home/me/.state" }, "linux")).toBe(
+      join("/home/me/.state", "opencode", "prompts.ndjson"),
+    )
+    expect(defaultFile({}, "linux")).toBe(
+      join(homedir(), ".local", "state", "opencode", "prompts.ndjson"),
+    )
   })
 
   test("honours an explicit file", () => {
@@ -163,6 +192,18 @@ describe("createWriter", () => {
       expect(typeof at).toBe("string")
       expect(new Date(at as string).toISOString()).toBe(at as string)
     }
+  })
+
+  test("creates the parent directory private to the user", () => {
+    const dir = join(ROOT, "private")
+    const write = createWriter(join(dir, "prompts.ndjson"))
+    write({ type: "assembled" })
+
+    if (process.platform !== "win32") {
+      // mode is ignored on Windows; the directory is per-user there anyway.
+      expect(statSync(dir).mode & 0o777).toBe(0o700)
+    }
+    expect(readRecords(join(dir, "prompts.ndjson"))).toHaveLength(1)
   })
 
   test("never lets a failed write escape", () => {
