@@ -57,10 +57,27 @@ jobs:
           exit 1
         fi
 
+    # The first version may be published by hand (npm trusted publishing can
+    # only be configured for an existing package). Re-publishing that version
+    # through a GitHub release would fail, so skip instead.
+    - name: Skip when the version already exists on npm
+      id: skip
+      env:
+        VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        if npm view "opencode-prompt-logger@$VERSION" version > /dev/null 2>&1; then
+          echo "opencode-prompt-logger@$VERSION is already on npm, nothing to publish"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Build
+      if: steps.skip.outputs.skip == 'false'
       run: bun run build
 
     - name: Strip _authToken from npmrc (let OIDC kick in)
+      if: steps.skip.outputs.skip == 'false'
       run: |
         npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
         if [ -f "$npmrc" ]; then
@@ -68,6 +85,7 @@ jobs:
         fi
 
     - name: Publish to npm
+      if: steps.skip.outputs.skip == 'false'
       run: npm publish --provenance --access public
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
