@@ -70,9 +70,9 @@ describe("prompt-logger plugin", () => {
     expect(harness.names).toEqual(["context", "compaction", "generate", "title", "http.request"])
   })
 
-  test("rotates the log through the configured maxBytes", async () => {
+  test("rotates the log through the configured rotateBytes", async () => {
     const file = join(ROOT, "rotate.ndjson")
-    const harness = await createHarness({ file, maxBytes: 1 })
+    const harness = await createHarness({ file, rotateBytes: 1 })
 
     for (const sessionID of ["ses_1", "ses_2", "ses_3"]) {
       await harness.run("context", {

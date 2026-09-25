@@ -9,8 +9,13 @@ export type Options = {
   http?: boolean
   /** Turn logging off: no hooks, no output file. */
   enabled?: boolean
-  /** Rotate the log at this size, keeping the previous copy. `false` disables rotation. */
-  maxBytes?: number | false
+  /**
+   * Rotate the log at this many bytes, keeping the previous copy as
+   * `<file>.1`. It is a rotation point, not a hard cap: with a log and its
+   * backup the plugin uses up to about twice this value. `false` keeps a
+   * single growing file.
+   */
+  rotateBytes?: number | false
 }
 
 /**
@@ -38,8 +43,8 @@ export function defaultFile(
   return join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), name)
 }
 
-/** Rotation threshold used when no `maxBytes` option is configured: 256 MiB. */
-export const DEFAULT_MAX_BYTES = 256 * 1024 * 1024
+/** Rotation point used when no `rotateBytes` option is configured: 256 MiB. */
+export const DEFAULT_ROTATE_BYTES = 256 * 1024 * 1024
 
 /** Model request kinds captured through one hook each. */
 export const CONTEXT_KINDS = ["context", "compaction", "generate", "title"] as const
@@ -84,11 +89,11 @@ export function shouldLogHttp(options: Options): boolean {
   return options.http !== false
 }
 
-/** Rotation threshold in bytes. `0` means one file that grows without a limit. */
-export function resolveMaxBytes(options: Options): number {
-  const value = options.maxBytes
+/** Rotation point in bytes. `0` means one file that grows without a limit. */
+export function resolveRotateBytes(options: Options): number {
+  const value = options.rotateBytes
   if (value === false) return 0
-  if (value === undefined) return DEFAULT_MAX_BYTES
+  if (value === undefined) return DEFAULT_ROTATE_BYTES
   return value > 0 ? Math.floor(value) : 0
 }
 
@@ -104,10 +109,10 @@ export type Write = (record: LogRecord) => void
 
 /**
  * Append one NDJSON line per record, rotating to `<file>.1` once the file
- * passes `maxBytes`. A failed write or rotation is reported on stderr and
+ * passes `rotateBytes`. A failed write or rotation is reported on stderr and
  * swallowed: a logger must never break a model request.
  */
-export function createWriter(file: string, maxBytes: number = DEFAULT_MAX_BYTES): Write {
+export function createWriter(file: string, rotateBytes: number = DEFAULT_ROTATE_BYTES): Write {
   // The log holds unredacted prompts: private to the user where POSIX allows.
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   const backup = `${file}.1`
@@ -118,7 +123,7 @@ export function createWriter(file: string, maxBytes: number = DEFAULT_MAX_BYTES)
       const line = JSON.stringify({ at: new Date().toISOString(), ...record }) + "\n"
       const size = Buffer.byteLength(line, "utf8")
 
-      if (maxBytes > 0 && bytes > 0 && bytes + size > maxBytes) {
+      if (rotateBytes > 0 && bytes > 0 && bytes + size > rotateBytes) {
         try {
           // One backup: the previous copy is replaced on every rotation.
           renameSync(file, backup)

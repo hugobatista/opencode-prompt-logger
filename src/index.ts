@@ -6,7 +6,7 @@ import {
   httpRecord,
   isEnabled,
   resolveFile,
-  resolveMaxBytes,
+  resolveRotateBytes,
   shouldLogHttp,
   type Options,
 } from "./core"
@@ -25,7 +25,7 @@ export default Plugin.define({
     // Disabled means idle: no hooks and no output file.
     if (!isEnabled(options)) return
 
-    const write = createWriter(resolveFile(options), resolveMaxBytes(options))
+    const write = createWriter(resolveFile(options), resolveRotateBytes(options))
 
     for (const kind of CONTEXT_KINDS) {
       await ctx.session.hook(kind, (event) => {

@@ -45,7 +45,7 @@ request, in a file you can search with `jq`.
   temp directory. Windows uses `%LOCALAPPDATA%\opencode\`, macOS
   `~/Library/Application Support/opencode/`, and Linux
   `$XDG_STATE_HOME/opencode/`. Override it with the `file` option.
-- Rotates at `maxBytes` (256 MiB by default), keeping the previous copy as
+- Rotates at `rotateBytes` (256 MiB by default), keeping the previous copy as
   `<file>.1`, so a forgotten log cannot fill the disk unbounded.
 - Is **enabled by default** after installation, and can be turned off with the
   `enabled` option without uninstalling.
@@ -110,12 +110,16 @@ everything else on the host, including OpenCode's own database and logs.
 
 By default the plugin rotates at 256 MiB. The current file is renamed to
 `<file>.1` and logging continues in a fresh file; only one backup is kept, so
-the plugin never uses much more than twice `maxBytes`.
+the plugin never uses much more than twice `rotateBytes`.
+
+`rotateBytes` is a rotation point, not a size cap. A file grows past it and is
+then renamed, so what bounds the disk is roughly twice the value — the current
+file plus the one backup.
 
 ```jsonc
 "options": {
-  "maxBytes": 1073741824,  // 1 GiB
-  // "maxBytes": false     // never rotate: one file grows until the disk is full
+  "rotateBytes": 1073741824,  // rotate at 1 GiB
+  // "rotateBytes": false     // never rotate: one file grows until the disk is full
 }
 ```
 
@@ -218,19 +222,19 @@ rotates at 256 MiB.
         "enabled": true,
         "file": "/home/me/.local/state/opencode/prompts.ndjson", // Linux default
         "http": true,
-        "maxBytes": 268435456
+        "rotateBytes": 268435456
       }
     }
   ]
 }
 ```
 
-| Option      | Type             | Default                        | Description                                                                             |
-| ----------- | ---------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
-| `enabled`   | boolean          | `true`                         | `false` keeps the plugin installed but idle: no hooks, no file.                          |
-| `file`      | string           | OS state directory             | NDJSON destination. Parent directories are created on first write with `0700` on POSIX.  |
-| `http`      | boolean          | `true`                         | Log the raw provider body. `false` keeps only the `assembled` records.                   |
-| `maxBytes`  | number or false  | `268435456` (256 MiB)          | Rotate at this size, keeping `<file>.1`. `false` disables rotation.                      |
+| Option        | Type             | Default               | Description                                                                                                                                    |
+| ------------- | ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`     | boolean          | `true`                | `false` keeps the plugin installed but idle: no hooks, no file.                                                                                 |
+| `file`        | string           | OS state directory    | NDJSON destination. Parent directories are created on first write with `0700` on POSIX.                                                         |
+| `http`        | boolean          | `true`                | Log the raw provider body. `false` keeps only the `assembled` records.                                                                          |
+| `rotateBytes` | number or false  | `268435456` (256 MiB) | Rotation point: the file is renamed to `<file>.1` and a fresh one starts, so the disk is bounded at roughly twice this value. `false` never rotates. |
 
 Default paths when `file` is not set:
 
@@ -475,8 +479,8 @@ After configuring, restart OpenCode and check:
 4. With `"http": false`, no `type: "http"` record appears.
 5. With `"enabled": false`, no new line appears after another prompt, and no
    output directory is created; `opencode plugin list` still lists the plugin.
-6. With a small `"maxBytes"`, a `<file>.1` copy appears once the limit is
-   passed, and the current file starts again at one record.
+6. With a small `"rotateBytes"`, a `<file>.1` copy appears once the rotation
+   point is passed, and the current file starts again at one record.
 
 ## Development
 
@@ -488,7 +492,7 @@ bun run build       # dist/index.js + dist/index.d.ts (npm entrypoint)
 ```
 
 - `src/core.ts` — pure logic: option resolution (`enabled`, `file`,
-  `defaultFile()`, `http`, `maxBytes`), record building, and the append-only
+  `defaultFile()`, `http`, `rotateBytes`), record building, and the append-only
   NDJSON writer with rotation to `<file>.1`. No OpenCode imports, and no
   POSIX-only assumptions: `defaultFile()` takes `env` and `platform` so every
   OS is unit-tested from any machine.

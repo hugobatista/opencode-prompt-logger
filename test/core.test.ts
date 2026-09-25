@@ -4,14 +4,14 @@ import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   CONTEXT_KINDS,
-  DEFAULT_MAX_BYTES,
+  DEFAULT_ROTATE_BYTES,
   assembledRecord,
   createWriter,
   defaultFile,
   httpRecord,
   isEnabled,
   resolveFile,
-  resolveMaxBytes,
+  resolveRotateBytes,
   shouldLogHttp,
 } from "../src/core"
 
@@ -82,12 +82,12 @@ describe("options", () => {
   })
 
   test("rotates at 256 MiB unless configured otherwise", () => {
-    expect(DEFAULT_MAX_BYTES).toBe(256 * 1024 * 1024)
-    expect(resolveMaxBytes({})).toBe(DEFAULT_MAX_BYTES)
-    expect(resolveMaxBytes({ maxBytes: 1024 })).toBe(1024)
-    expect(resolveMaxBytes({ maxBytes: 1024.9 })).toBe(1024)
-    expect(resolveMaxBytes({ maxBytes: false })).toBe(0)
-    expect(resolveMaxBytes({ maxBytes: 0 })).toBe(0)
+    expect(DEFAULT_ROTATE_BYTES).toBe(256 * 1024 * 1024)
+    expect(resolveRotateBytes({})).toBe(DEFAULT_ROTATE_BYTES)
+    expect(resolveRotateBytes({ rotateBytes: 1024 })).toBe(1024)
+    expect(resolveRotateBytes({ rotateBytes: 1024.9 })).toBe(1024)
+    expect(resolveRotateBytes({ rotateBytes: false })).toBe(0)
+    expect(resolveRotateBytes({ rotateBytes: 0 })).toBe(0)
   })
 
   test("captures every model request kind", () => {
@@ -221,7 +221,7 @@ describe("createWriter", () => {
     }
   })
 
-  test("rotates to a single backup once maxBytes is passed", () => {
+  test("rotates to a single backup once rotateBytes is passed", () => {
     const file = join(ROOT, "rotate.ndjson")
     const write = createWriter(file, 1) // every record passes the limit
 
