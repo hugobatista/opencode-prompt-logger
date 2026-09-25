@@ -387,6 +387,55 @@ jq -c 'select(.type == "assembled" and .kind == "context")' "$LOG" |
 diff -u before.txt after.txt
 ```
 
+### Skills
+
+A loaded skill is advertised inside the assembled system prompt as an
+`<id>name</id>` entry, next to the file-backed instruction blocks. So "did a
+skill reach the model?" is a system-prompt question and reuses the
+last-context-record pattern from [System prompt](#system-prompt). Keep the two
+filters straight: `assembled` + `context` is what OpenCode built, and `http` +
+`primary` is the raw body of that same agent loop — the request kinds are named
+differently on the two record types.
+
+```sh
+# set the skill you are checking
+skill=handoff
+
+# was it advertised in the last agent-loop system prompt?
+jq -c 'select(.type == "assembled" and .kind == "context")' "$LOG" |
+  tail -1 | jq -r '[.system[].text] | join("\n")' |
+  grep -qF "<id>$skill</id>" &&
+  echo "advertised in the last system prompt" ||
+  echo "NOT in the last system prompt"
+
+# list everything that was advertised
+jq -c 'select(.type == "assembled" and .kind == "context")' "$LOG" |
+  tail -1 | jq -r '[.system[].text] | join("\n")' |
+  grep -oP '(?<=<id>)[^<]+(?=</id>)'
+```
+
+`grep -oP` is GNU grep, available on Linux and WSL. macOS ships BSD grep, which
+has no `-P`; use `ggrep` from Homebrew, or the portable jq form
+`jq -r '[.system[].text] | join("\n") | scan("<id>([^<]+)</id>")[0]'`.
+
+Then check the request that was actually sent:
+
+```sh
+# the same check against the provider payload for that agent loop
+jq -c 'select(.type == "http" and .kind == "primary")' "$LOG" |
+  tail -1 | jq -r '.body | fromjson | .messages[0].content' |
+  grep -qF "<id>$skill</id>" &&
+  echo "advertised in the request that was sent" ||
+  echo "NOT in the request that was sent"
+```
+
+`.body` is text, so `fromjson` parses it first. `.messages[0].content` is the
+system message on the **chat/completions** protocol; on the **responses**
+protocol there is no `messages` array and the system prompt is `.instructions`
+— detect the protocol as shown in [Raw HTTP bodies](#raw-http-bodies).
+Cross-checking the two records is how you catch a skill that OpenCode assembled
+but the provider never received.
+
 ### Messages and tools
 
 ```sh
