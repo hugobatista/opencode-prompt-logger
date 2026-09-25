@@ -233,6 +233,22 @@ describe("createWriter", () => {
     expect(readRecords(`${file}.1`).map((record) => record.n)).toEqual([2])
   })
 
+  test("rotates on the size on disk when two writers share the file", () => {
+    const file = join(ROOT, "shared.ndjson")
+    const victim = createWriter(file, 4096)
+    victim({ pad: "" })
+
+    // A writer with a much larger point grows the file past 4096 without
+    // rotating, which is what a second OpenCode process would do.
+    const grower = createWriter(file, 1_000_000)
+    for (let n = 0; n < 12; n++) grower({ pad: "x".repeat(500) })
+
+    victim({ pad: "" }) // the file is over 4096 now: it must rotate
+
+    expect(readRecords(`${file}.1`)).toHaveLength(13)
+    expect(readRecords(file)).toHaveLength(1)
+  })
+
   test("keeps one growing file when rotation is off", () => {
     const file = join(ROOT, "no-rotate.ndjson")
     const write = createWriter(file, 0)

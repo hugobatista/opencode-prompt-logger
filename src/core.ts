@@ -109,32 +109,34 @@ export type Write = (record: LogRecord) => void
 
 /**
  * Append one NDJSON line per record, rotating to `<file>.1` once the file
- * passes `rotateBytes`. A failed write or rotation is reported on stderr and
- * swallowed: a logger must never break a model request.
+ * passes `rotateBytes`. The size is read from the file before every write, so
+ * a second writer on the same file (a TUI and a server, say) cannot push it
+ * past the rotation point unnoticed. A failed write or rotation is reported on
+ * stderr and swallowed: a logger must never break a model request.
  */
 export function createWriter(file: string, rotateBytes: number = DEFAULT_ROTATE_BYTES): Write {
   // The log holds unredacted prompts: private to the user where POSIX allows.
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   const backup = `${file}.1`
-  let bytes = existingSize(file)
 
   return (record) => {
     try {
       const line = JSON.stringify({ at: new Date().toISOString(), ...record }) + "\n"
       const size = Buffer.byteLength(line, "utf8")
+      const current = existingSize(file)
 
-      if (rotateBytes > 0 && bytes > 0 && bytes + size > rotateBytes) {
+      // `current > 0` keeps a single oversized record from rotating an empty
+      // or missing file.
+      if (rotateBytes > 0 && current > 0 && current + size > rotateBytes) {
         try {
           // One backup: the previous copy is replaced on every rotation.
           renameSync(file, backup)
-          bytes = 0
         } catch (error) {
           console.error(`prompt-logger: rotation failed: ${String(error)}`)
         }
       }
 
       appendFileSync(file, line)
-      bytes += size
     } catch (error) {
       console.error(`prompt-logger: ${String(error)}`)
     }

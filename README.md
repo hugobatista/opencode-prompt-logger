@@ -116,6 +116,10 @@ the plugin never uses much more than twice `rotateBytes`.
 then renamed, so what bounds the disk is roughly twice the value — the current
 file plus the one backup.
 
+The size is read from the file before every write, so two OpenCode processes
+sharing the same log (a TUI and a server, for example) still rotate at the
+point instead of both appending past it.
+
 ```jsonc
 "options": {
   "rotateBytes": 1073741824,  // rotate at 1 GiB
@@ -493,7 +497,8 @@ bun run build       # dist/index.js + dist/index.d.ts (npm entrypoint)
 
 - `src/core.ts` — pure logic: option resolution (`enabled`, `file`,
   `defaultFile()`, `http`, `rotateBytes`), record building, and the append-only
-  NDJSON writer with rotation to `<file>.1`. No OpenCode imports, and no
+  NDJSON writer that reads the current size before each write and rotates to
+  `<file>.1`. No OpenCode imports, and no
   POSIX-only assumptions: `defaultFile()` takes `env` and `platform` so every
   OS is unit-tested from any machine.
 - `src/index.ts` — the plugin (`id: "prompt-logger"`), a
